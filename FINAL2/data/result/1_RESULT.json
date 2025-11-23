@@ -1,0 +1,18 @@
+{
+    "file_name": "1.wav",
+    "file_type": "audio",
+    "timestamp": "2025-11-23T17:54:49.363994",
+    "audio_data": {
+        "gunshot_classification": "None",
+        "times_detected": "17:54:54",
+        "screams_panic": false,
+        "background_noise": "Vehicle (0.62), Helicopter (0.27), Aircraft (0.21)",
+        "distance_estimation": "Unknown"
+    },
+    "visual_data": null,
+    "text_data": null,
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": null,
+    "summary": "This audio event features a soundscape with detected sounds of a vehicle, helicopter, and aircraft, but it does not contain any spoken words or transcript."
+}
