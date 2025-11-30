@@ -32,7 +32,9 @@ from pypdf import PdfReader
 from dateutil import parser
 import chromadb
 from sentence_transformers import SentenceTransformer
-
+from dotenv import load_dotenv
+load_dotenv()
+GROQ_API_KEY=os.getenv("GROQ_API_KEY")
 # Try importing RecursiveCharacterTextSplitter, fallback if not available
 try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -63,7 +65,7 @@ PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
 RESULT_DIR = os.path.join(DATA_DIR, "result")
 TEMP_DIR = os.path.join(DATA_DIR, "temp_processing")
 CHROMA_DB_DIR = os.path.join(DATA_DIR, "chroma_db")
-GROQ_API_KEY = "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"
+
 
 # Model Paths (Relative to FINAL2)
 WEAPON_MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
