@@ -1,0 +1,18 @@
+{
+    "file_name": "1.wav",
+    "file_type": "audio",
+    "timestamp": "2025-11-30T15:00:42.022523",
+    "audio_data": {
+        "gunshot_classification": "None",
+        "times_detected": "15:00:49",
+        "screams_panic": false,
+        "background_noise": "Vehicle (0.62), Helicopter (0.27), Aircraft (0.21)",
+        "distance_estimation": "Unknown"
+    },
+    "visual_data": null,
+    "text_data": null,
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": null,
+    "summary": "This audio event features various transportation sounds, including a vehicle, helicopter, and aircraft, but does not contain any discernible speech or dialogue."
+}

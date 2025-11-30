@@ -1,0 +1,35 @@
+{
+    "file_name": "WhatsApp Video 2025-11-30 at 2.23.30 PM.mp4",
+    "file_type": "video",
+    "timestamp": "2025-11-30T15:09:54.433437",
+    "audio_data": {
+        "gunshot_classification": "None",
+        "times_detected": "Multiple",
+        "screams_panic": false,
+        "background_noise": "Speech, Inside, small room",
+        "distance_estimation": "Unknown"
+    },
+    "visual_data": {
+        "object_detection": [
+            "guns",
+            "knife"
+        ],
+        "number_of_attackers": 0,
+        "terrain_type": null,
+        "threat_posture": "Armed",
+        "environment_clues": [
+            "there is a helicopter that is flying over a field of flowers",
+            "there are two bears that are standing in the dirt",
+            "there is a man sitting on a rock with a rifle",
+            "there is a plane that is flying over a hill",
+            "there is a tire sitting on a rock near a tree"
+        ],
+        "gps_exif": null,
+        "weather": "Unknown"
+    },
+    "text_data": null,
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": "[Ref: test_video1.mp4]: Summary: Based on the confirmed object detection of 2 weapons and 2 persons, a potential security threat is present. Although the audio transcript suggests a non-hostile context, with the speaker mentioning firing a gun at a target, the presence of armed individuals warrants continued monitoring, but there is no indication of an active combat situation as no gunshots or explosions were detected in the audio.\nTranscript:  wars it has had experience in. I like to bring it out and fire it every now and then just to keep it exercised. Yeah, I got to make sure it continues to work. Never know when you might need it. Life is good.\nVisuals: a man holding a gun in his hand while standing in a wooded area, arafed man holding a gun in his hand and pointing it at the camera, arafed man holding a gun in his hand and looking at the camera, a man holding a gun in his hand while standing in a wooded area, a man holding a gun in his hand while standing in a wooded area, there is a man holding a cell p\n\n[Ref: WhatsApp Video 2025-11-30 at 2.23.30 PM.mp4]: Summary: The video appears to show a series of unrelated and disjointed scenes, including a plane flying over a bush, fires burning, a stuck truck, and a bear in water, with detected objects including a knife and guns. The audio transcript is also unclear and seemingly unrelated to the visual observations, consisting of fragmented and incomprehensible speech.\nTranscript:  well I had I had Hey Bend the camera! No matter what He had a name I don't like him Ok now That's the end Would you tell me? Off the cover You said \u0432\u043e\u0441ussen See have ermg Don't touch Hmm Seek!? MAI\nVisuals: a truck is stuck in the middle of the desert, a man is standing on a hill with a rifle, a video of a soldier on a hill, a man is standing on a hill with a rifle, a video of a fire burning through the trees, a video of a fire burning through a tree, a fire is seen in the water near a field, a bear is standing in the water, a plane is flying over a bush with trees\n\n[Ref: original.jpg]: soldiers are holding their guns and aiming at something",
+    "summary": "Based on the confirmed object detection data, the scene presents a potential threat with 2 detected weapons, despite the unclear visual descriptions. The audio transcript does not indicate any gunshots or explosions, and the speech appears unrelated to an immediate security threat, so the situation is being monitored for further developments."
+}

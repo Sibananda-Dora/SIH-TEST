@@ -1,0 +1,34 @@
+{
+    "file_name": "WhatsApp Video 2025-11-30 at 2.23.30 PM.mp4",
+    "file_type": "video",
+    "timestamp": "2025-11-30T15:54:40.847016",
+    "audio_data": {
+        "gunshot_classification": "None",
+        "times_detected": "Multiple",
+        "screams_panic": false,
+        "background_noise": "Speech, Inside, small room",
+        "distance_estimation": "Unknown"
+    },
+    "visual_data": {
+        "object_detection": [
+            "guns",
+            "knife"
+        ],
+        "number_of_attackers": 0,
+        "terrain_type": null,
+        "threat_posture": "Armed",
+        "environment_clues": [
+            "there is a plane that is flying over a hill",
+            "there is a helicopter that is flying over a field of flowers",
+            "there is a tire sitting on a rock near a tree",
+            "there is a man sitting on a rock with a rifle",
+            "there are two bears that are standing in the dirt"
+        ],
+        "gps_exif": null,
+        "weather": "Unknown"
+    },
+    "text_data": null,
+    "processing_status": "pending",
+    "error_message": null,
+    "summary": "Despite conflicting visual scene descriptions, object detection confirms 2 weapons present, indicating a potential security threat. However, with no persons detected and no gunshots or explosions in the audio, the situation appears to be currently contained, with the audio transcript suggesting a casual conversation rather than an imminent threat."
+}

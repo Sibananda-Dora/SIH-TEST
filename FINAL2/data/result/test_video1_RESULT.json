@@ -1,0 +1,35 @@
+{
+    "file_name": "test_video1.mp4",
+    "file_type": "video",
+    "timestamp": "2025-11-30T15:08:48.983497",
+    "audio_data": {
+        "gunshot_classification": "None",
+        "times_detected": "Multiple",
+        "screams_panic": false,
+        "background_noise": "Speech, Clang, Ding",
+        "distance_estimation": "Unknown"
+    },
+    "visual_data": {
+        "object_detection": [
+            "guns",
+            "knife"
+        ],
+        "number_of_attackers": 2,
+        "terrain_type": null,
+        "threat_posture": "Armed",
+        "environment_clues": [
+            "a man holding a gun in his hand and pointing at the camera",
+            "there is a man that is standing in the woods with a gun",
+            "a man is pointing at a gun in a wooded area",
+            "a man is pointing at a group of birds in a field",
+            "there is a man that is shooting a gun at a target"
+        ],
+        "gps_exif": null,
+        "weather": "Unknown"
+    },
+    "text_data": null,
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": "[Ref: test_video1.mp4]: Summary: A man is shown shooting a gun at a target, discussing his experience with the firearm and the importance of regularly using it to ensure it remains functional. He appears to be enjoying the experience, mentioning that \"life is good\" as he fires the gun, with various sounds of speech, clangs, and dings audible in the background.\nTranscript:  wars it has had experience in. I like to bring it out and fire it every now and then just to keep it exercised. Yeah, I got to make sure it continues to work. Never know when you might need it. Life is good.\nVisuals: a man holding a gun in his hand, a man holding a handgun in his hand, a man holding a handgun in his hand, a man holding a gun in his hand, a man holding a gun in his hand, a man holding a gun in his hand, a man in a blue shirt and hat holding a gun, a man in a hat and blue shirt holding a gun, a man in a hat and blue shirt holding a gun, a man in a hat is holding a bird, a man in a blue jacket is talking on a cell, a man in a \n\n[Ref: test_video1.mp4]: Summary: A man is at a shooting range, firing a gun at a target and discussing his experience with the weapon, noting that he likes to regularly use it to keep it in working order. The man appears to be enthusiastic about shooting and values the importance of maintaining his gun, implying a sense of preparedness and responsibility.\nTranscript:  wars it has had experience in. I like to bring it out and fire it every now and then just to keep it exercised. Yeah, I got to make sure it continues to work. Never know when you might need it. Life is good.\nVisuals: a man holding a gun in his hand, a man holding a handgun in his hand, a man holding a handgun in his hand, a man holding a gun in his hand, a man holding a gun in his hand, a man holding a gun in his hand, a man in a blue shirt and hat holding a gun, a man in a hat and blue shirt holding a gun, a man in a hat and blue shirt holding a gun, a man in a hat is holding a bird, a man in a blue jacket is talking on a cell, a man in a blue \n\n[Ref: test_video1.mp4]: Summary: A man is shown handling various firearms, including a shotgun and handgun, while speaking about the importance of maintaining and exercising his guns in case they are needed. The scene appears to be a casual, recreational setting, with the man standing on a gravel road and discussing his firearms with a tone of appreciation and preparedness.\nTranscript:  wars it has had experience in. I like to bring it out and fire it every now and then just to keep it exercised. Yeah, I got to make sure it continues to work. Never know when you might need it. Life is good.\nVisuals: a man holding a gun in his hand, a man holding a handgun in his hand, a man holding a handgun in his hand, a man holding a gun in his hand, a man holding a gun in his hand, a man holding a gun in his hand, a man in a blue shirt and hat holding a gun, a man in a hat and blue shirt holding a gun, a man in a hat and blue shirt holding a gun, a man in a hat is holding a bird, a man in a blue jacket is talking on a cel",
+    "summary": "Based on the confirmed object detection of 2 weapons and 2 persons, a potential security threat is present. Although the audio transcript suggests a non-hostile context, with the speaker mentioning firing a gun at a target, the presence of armed individuals warrants continued monitoring, but there is no indication of an active combat situation as no gunshots or explosions were detected in the audio."
+}

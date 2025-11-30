@@ -1,21 +1,40 @@
 {
     "file_name": "latest.txt",
     "file_type": "text",
-    "timestamp": "2025-11-23T17:54:54.029818",
+    "timestamp": "2025-11-30T15:00:42.025258",
     "audio_data": null,
     "visual_data": null,
     "text_data": {
-        "entities": [],
-        "locations": [],
-        "events": [],
-        "time_phrases": [],
-        "sentiment_urgency": "Error",
+        "entities": [
+            "Patrol Team",
+            "Two individuals"
+        ],
+        "locations": [
+            "Pahalgam Town",
+            "Baisaran Entry Gate",
+            "Trail-1",
+            "Forest Shadow Zone",
+            "CRPF Camp Pahalgam"
+        ],
+        "events": [
+            "Normal movement observed along tourist road",
+            "Two individuals seen near Forest Shadow Zone",
+            "Individuals avoided the main trail when patrol approached"
+        ],
+        "time_phrases": [
+            "22 April 2025, 08:40 AM \u2013 11:05 AM",
+            "10:12 AM"
+        ],
+        "sentiment_urgency": "Routine",
         "weapon_details": [],
-        "movement_direction": null,
-        "role_identification": []
+        "movement_direction": "From Pahalgam Town to Baisaran Entry Gate",
+        "role_identification": [
+            "Patrol Team",
+            "Unknown individuals"
+        ]
     },
     "processing_status": "pending",
-    "error_message": "2 validation errors for TextExtraction\nweapon_details\n  Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type\nrole_identification\n  Input should be a valid list [type=list_type, input_value={'Patrol Team': 'Soldier'...individuals': 'Unknown'}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.12/v/list_type",
-    "historical_context": "[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.\n\n[Ref: original.jpg]: a group of soldiers",
-    "summary": "A patrol team observed normal movement along a tourist road, but two individuals were seen near a forest area and avoided the main trail when approached."
+    "error_message": null,
+    "historical_context": "[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.\n\n[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.\n\n[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.",
+    "summary": "A patrol team observed normal movement along a tourist road, but two individuals were seen near a forest area and avoided the main trail when approached. The incident occurred during a morning patrol in Pahalgam Town."
 }

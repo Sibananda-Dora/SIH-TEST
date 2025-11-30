@@ -1,0 +1,44 @@
+{
+    "file_name": "latesttext2.txt",
+    "file_type": "text",
+    "timestamp": "2025-11-30T15:00:42.026478",
+    "audio_data": null,
+    "visual_data": null,
+    "text_data": {
+        "entities": [
+            "ROMEO Team",
+            "ALPHA-21 Team",
+            "CRPF Camp Pahalgam"
+        ],
+        "locations": [
+            "Baisaran Upper Meadow",
+            "North Forest Slope",
+            "Pahalgam Town",
+            "Baisaran Entry Gate",
+            "Trail-1",
+            "Forest Shadow Zone"
+        ],
+        "events": [
+            "Patrol report of dense pine growth obstructing visibility",
+            "Noticing faint smoke residue near the ridge",
+            "Suspicious individuals avoiding the main trail",
+            "Normal movement observed along tourist road"
+        ],
+        "time_phrases": [
+            "21 April, 1:00 PM \u2013 2:40 PM",
+            "22 April 2025, 08:40 AM \u2013 11:05 AM",
+            "10:12 AM"
+        ],
+        "sentiment_urgency": "Routine",
+        "weapon_details": [],
+        "movement_direction": "From Pahalgam Town to Baisaran Entry Gate",
+        "role_identification": [
+            "Patrol Team",
+            "Civilian"
+        ]
+    },
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": "[Ref: latesttext2.txt]: Patrol Report 11 \u2013 ROMEO Team (Terrain Issue + Line-of-Sight Problems)\nTeam ID: PT-ROMEO\nBase: Pahalgam CRPF Camp\nTime: 21 April, 1:00 PM \u2013 2:40 PM\nZone: Baisaran Upper Meadow \u2192 North Forest Slope\n\u201cBaisaran upper slope heavily obstructed by dense pine growth.\nEven at 30\u201340 meters visibility drops drastically.\nWe noticed faint smoke residue near the ridge but no direct sightline due to slope geometry.\nTeam could not verify if it was a cooking fire or hostile movement.\u201d\n\n[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.\n\n[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.",
+    "summary": "Patrol teams ROMEO and ALPHA-21 report terrain issues, line-of-sight problems, and suspicious movements in the Baisaran area"
+}

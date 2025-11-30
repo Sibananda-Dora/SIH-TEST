@@ -1,0 +1,24 @@
+{
+    "file_name": "original.jpg",
+    "file_type": "image",
+    "timestamp": "2025-11-30T15:00:45.124300",
+    "audio_data": null,
+    "visual_data": {
+        "object_detection": [
+            "1 Person(s)"
+        ],
+        "number_of_attackers": 1,
+        "terrain_type": null,
+        "threat_posture": "Unknown",
+        "environment_clues": [
+            "soldiers are holding their guns and aiming at something"
+        ],
+        "gps_exif": null,
+        "weather": "Unknown"
+    },
+    "text_data": null,
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": "[Ref: original.jpg]: a group of soldiers\n\n[Ref: original.jpg]: a group of soldiers\n\n[Ref: original.jpg]: a group of soldiers",
+    "summary": "soldiers are holding their guns and aiming at something"
+}

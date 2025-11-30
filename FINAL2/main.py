@@ -1,4 +1,12 @@
 import os
+import warnings
+import gc
+
+# Suppress TensorFlow warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+warnings.filterwarnings('ignore')
+
 import json
 import shutil
 import csv
@@ -10,6 +18,8 @@ import tensorflow_hub as tfhub
 import cv2
 import torch
 import subprocess
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
 from ultralytics import YOLO
 from transformers import pipeline
@@ -53,7 +63,7 @@ PROCESSED_DIR = os.path.join(DATA_DIR, "processed")
 RESULT_DIR = os.path.join(DATA_DIR, "result")
 TEMP_DIR = os.path.join(DATA_DIR, "temp_processing")
 CHROMA_DB_DIR = os.path.join(DATA_DIR, "chroma_db")
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "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"
 
 # Model Paths (Relative to FINAL2)
 WEAPON_MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
@@ -69,7 +79,7 @@ os.makedirs(CHROMA_DB_DIR, exist_ok=True)
 # --- 1. DETAILED STATE DEFINITION (Based on your Images) ---
 
 class AudioExtraction(BaseModel):
-    gunshot_classification: Optional[str] = Field(None, description="AK-series, pistol, 7.62mm")
+    gunshot_classification: Optional[str] = Field(None, description="AK-series, pistol, 7.62mm or any other guns")
     times_detected: Optional[str] = Field(None, description="Timestamp of event e.g. '2:25 PM'")
     screams_panic: Optional[bool] = Field(None, description="Confirms threat severity")
     background_noise: Optional[str] = Field(None, description="Forest wind, vehicles, etc.")
@@ -93,6 +103,11 @@ class TextExtraction(BaseModel):
     weapon_details: List[str] = Field(default_factory=list, description="AK-47, pistol")
     movement_direction: Optional[str] = Field(None, description="'From forest', 'towards meadow'")
     role_identification: List[str] = Field(default_factory=list, description="Attacker/Civilian")
+    
+    class Config:
+        # Allow extra fields and be more flexible with types
+        extra = 'allow'
+        arbitrary_types_allowed = True
 
 class RakshakState(BaseModel):
     """The shared state passed between nodes"""
@@ -110,7 +125,6 @@ class RakshakState(BaseModel):
     # Final Output
     processing_status: str = "pending"
     error_message: Optional[str] = None
-    historical_context: Optional[str] = None # Added for RAG context
     summary: Optional[str] = None # Brief description of the event
 
 # --- 2. RAG MEMORY SYSTEM ---
@@ -151,22 +165,7 @@ class RakshakMemory:
             self.collection.upsert(ids=ids, embeddings=embeddings, documents=docs, metadatas=metas)
             print(f"   [Memory] Stored {len(ids)} chunks.")
 
-    def retrieve(self, query: str, n_results: int = 3) -> str:
-        """Retrieves relevant context"""
-        if not query: return ""
-        
-        query_vector = self.embedder.encode(query).tolist()
-        results = self.collection.query(query_embeddings=[query_vector], n_results=n_results)
-        
-        context = []
-        if results['documents']:
-            for i, doc in enumerate(results['documents'][0]):
-                meta = results['metadatas'][0][i]
-                context.append(f"[Ref: {meta.get('source')}]: {doc}")
-        
-        return "\n\n".join(context)
-
-# Initialize Memory Globally (Lazy load in nodes if preferred, but global is fine here)
+# Initialize Memory Globally
 memory = RakshakMemory()
 
 # --- 3. NODES ---
@@ -213,21 +212,13 @@ def text_node(state: RakshakState) -> RakshakState:
         if not content:
             raise ValueError("No text content extracted")
 
-        # 2. Retrieve Context (RAG)
-        print("   [RAG] Retrieving context...")
-        context = memory.retrieve(content[:500])
-        state.historical_context = context
-
-        # 3. Analyze with Groq
+        # 2. Analyze with Groq
         print("   [AI] Analyzing content...")
         groq_client = Groq(api_key=GROQ_API_KEY)
         prompt = f"""
         Analyze this intelligence report.
         
         CONTENT: "{content[:3000]}"
-        
-        HISTORICAL CONTEXT:
-        {context}
         
         Extract the following in JSON format:
         - summary (A brief 1-2 sentence description of what is happening)
@@ -248,12 +239,18 @@ def text_node(state: RakshakState) -> RakshakState:
         )
         analysis = json.loads(completion.choices[0].message.content)
         
-        # 4. Store in Memory
+        # 3. Store in Memory
         print("   [RAG] Storing in memory...")
         memory.store(content, {"source": state.file_name, "type": "text"})
 
-        # 5. Populate State
+        # 4. Populate State
         state.summary = analysis.get("summary", "No summary available.")
+        
+        # Handle movement_direction - convert dict to string if needed
+        movement_dir = analysis.get("movement_direction", "Unknown")
+        if isinstance(movement_dir, dict):
+            movement_dir = f"From {movement_dir.get('from', 'Unknown')} to {movement_dir.get('to', 'Unknown')}"
+        
         state.text_data = TextExtraction(
             entities=analysis.get("entities", []),
             locations=analysis.get("locations", []),
@@ -261,7 +258,7 @@ def text_node(state: RakshakState) -> RakshakState:
             time_phrases=analysis.get("time_phrases", []),
             sentiment_urgency=analysis.get("sentiment_urgency", "Unknown"),
             weapon_details=analysis.get("weapon_details", []),
-            movement_direction=analysis.get("movement_direction", "Unknown"),
+            movement_direction=str(movement_dir),
             role_identification=analysis.get("role_identification", [])
         )
         
@@ -317,16 +314,23 @@ def audio_node(state: RakshakState) -> RakshakState:
         transcript = ""
         if has_speech:
             print("   [Whisper] Transcribing speech...")
-            groq_client = Groq(api_key=GROQ_API_KEY)
-            with open(state.file_path, "rb") as file:
-                transcription = groq_client.audio.transcriptions.create(
-                    file=file,
-                    model="whisper-large-v3-turbo",
-                    response_format="json",
-                    language="en", 
-                    temperature=0.0
-                )
-            transcript = transcription.text
+            try:
+                groq_client = Groq(api_key=GROQ_API_KEY)
+                with open(state.file_path, "rb") as file:
+                    transcription = groq_client.audio.transcriptions.create(
+                        file=file,
+                        model="whisper-large-v3-turbo",
+                        response_format="json",
+                        language="en", 
+                        temperature=0.0
+                    )
+                transcript = transcription.text
+                print(f"   [Whisper] Transcript: \"{transcript[:100]}...\"")
+            except Exception as e:
+                print(f"   [Whisper] Transcription failed: {e}")
+                transcript = ""
+        else:
+            print("   [Whisper] No speech detected, skipping transcription")
         
         # 4. Generate Summary (LLM)
         print("   [AI] Generating Audio Summary...")
@@ -345,10 +349,6 @@ def audio_node(state: RakshakState) -> RakshakState:
 
         # 5. RAG Integration
         if transcript:
-            print("   [RAG] Retrieving context for transcript...")
-            context = memory.retrieve(transcript)
-            state.historical_context = context
-            
             print("   [RAG] Storing transcript...")
             memory.store(transcript, {"source": state.file_name, "type": "audio_transcript"})
 
@@ -392,23 +392,28 @@ def video_node(state: RakshakState) -> RakshakState:
         
         # Load Models
         model_person = YOLO(PERSON_MODEL_PATH)
+        # CHANGE 1: Increase weapon detection confidence to reduce false positives
         model_weapon = YOLO(WEAPON_MODEL_PATH) if os.path.exists(WEAPON_MODEL_PATH) else None
-        captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
+        # CHANGE 2: Use BLIP-Large for better accuracy (less hallucination)
+        captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-large")
         
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
             
             if frame_count % frame_interval == 0:
+                timestamp = frame_count / fps
+                
                 # YOLO Person
                 p_res = model_person.predict(frame, classes=[0], verbose=False, conf=0.4)
                 p_count = len(p_res[0].boxes)
                 max_people = max(max_people, p_count)
                 
                 # YOLO Weapon
+                # CHANGE 3: Increase confidence to 0.50 to reduce false positives (sticks detected as knives)
                 w_names = []
                 if model_weapon:
-                    w_res = model_weapon.predict(frame, verbose=False, conf=0.4)
+                    w_res = model_weapon.predict(frame, verbose=False, conf=0.50)
                     for box in w_res[0].boxes:
                         cls_id = int(box.cls[0])
                         w_name = w_res[0].names[cls_id]
@@ -417,11 +422,17 @@ def video_node(state: RakshakState) -> RakshakState:
                         weapon_detected = True
 
                 # BLIP (Only if interesting)
+                description = ""
                 if p_count > 0 or w_names:
                     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     pil_img = Image.fromarray(rgb_frame)
                     blip_out = captioner(pil_img, max_new_tokens=20)
-                    descriptions.append(blip_out[0]['generated_text'])
+                    description = blip_out[0]['generated_text']
+                    descriptions.append(description)
+                
+                # Log frame details if something detected
+                if p_count > 0 or w_names:
+                    print(f"      Time {timestamp:.1f}s | Persons: {p_count} | Weapons: {w_names} | Scene: '{description}'")
             
             frame_count += 1
         cap.release()
@@ -484,31 +495,47 @@ def video_node(state: RakshakState) -> RakshakState:
             # Cleanup audio file
             os.remove(audio_path)
         
-        # --- 3. GENERATE SUMMARY (LLM) ---
+        # --- 3. GENERATE SUMMARY (LLM with Anti-Hallucination) ---
         print("   [AI] Generating Video Summary...")
         groq_client = Groq(api_key=GROQ_API_KEY)
         unique_descriptions = list(set(descriptions))[:5]
-        prompt = f"""
-        Summarize this video event in 1-2 sentences.
-        Visual Observations: {', '.join(unique_descriptions)}
-        Detected Objects: {', '.join(list(set(detected_objects_all)))}
-        Audio Sounds: {', '.join(detected_sounds)}
-        Audio Transcript: "{transcript}"
-        """
+        
+        # CHANGE 4: Anti-Hallucination System Prompt
+        system_prompt = """You are a military surveillance AI analyst.
+
+CRITICAL RULES:
+1. TRUST object detection (Weapons/Persons counts) over scene descriptions
+2. Scene descriptions may hallucinate (e.g., 'bears', 'planes', 'trucks' in camouflage/foliage). IGNORE nonsensical descriptions
+3. Focus ONLY on: Armed individuals, firing positions, aggressive posture, actual threats
+4. If Audio indicates 'Gunshot' or 'Explosion', assume ACTIVE COMBAT even if visuals are unclear
+5. If descriptions seem random/unrelated, state "Visual quality unclear" and rely on object detection
+6. Do NOT mention animals, vehicles, or objects unless they are clearly relevant to security threat"""
+
+        user_prompt = f"""
+INTELLIGENCE DATA:
+- Visual Scene Descriptions: {', '.join(unique_descriptions) if unique_descriptions else 'No clear descriptions'}
+- CONFIRMED Objects Detected: {len(list(set(detected_objects_all)))} weapons, {max_people} persons
+- Audio Events: {', '.join(detected_sounds) if detected_sounds else 'No significant sounds'}
+- Audio Transcript: "{transcript if transcript else 'No speech detected'}"
+
+TASK:
+Provide a 1-2 sentence tactical summary. Prioritize object detection data over scene descriptions.
+If gunshots/explosions detected in audio, emphasize active threat regardless of visual clarity."""
+
         completion = groq_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=150
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=150,
+            temperature=0.3  # Lower temperature for more factual output
         )
         state.summary = completion.choices[0].message.content.strip()
 
         # --- 4. RAG INTEGRATION ---
         combined_text = f"Summary: {state.summary}\nTranscript: {transcript}\nVisuals: {', '.join(descriptions)}"
         if combined_text.strip():
-            print("   [RAG] Retrieving context...")
-            context = memory.retrieve(combined_text[:500])
-            state.historical_context = context
-            
             print("   [RAG] Storing video analysis...")
             memory.store(combined_text, {"source": state.file_name, "type": "video_analysis"})
 
@@ -563,28 +590,31 @@ def image_node(state: RakshakState) -> RakshakState:
             detected_objects.append(f"{person_count} Person(s)")
             
         # Weapon Detection
+        # CHANGE 6: Increase confidence to 0.50 to reduce false positives
         if os.path.exists(WEAPON_MODEL_PATH):
             model_weapon = YOLO(WEAPON_MODEL_PATH)
-            res_w = model_weapon.predict(img_cv2, verbose=False, conf=0.30)
+            res_w = model_weapon.predict(img_cv2, verbose=False, conf=0.50)
             weapon_count = len(res_w[0].boxes)
             w_names = [res_w[0].names[int(c)] for c in res_w[0].boxes.cls]
             if w_names:
                 detected_objects.extend(list(set(w_names)))
         
-        # 3. Scene Captioning (BLIP)
+        # 3. Scene Captioning (BLIP-Large for better accuracy)
         print("   [BLIP] Generating caption...")
-        captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-base")
+        captioner = pipeline("image-to-text", model="Salesforce/blip-image-captioning-large")
         caption_result = captioner(img_pil)
         description = caption_result[0]['generated_text']
+        
+        # CHANGE 5: Filter out obvious hallucinations
+        hallucination_keywords = ['bear', 'plane', 'airplane', 'aircraft', 'truck', 'elephant', 'giraffe', 'zebra']
+        if any(keyword in description.lower() for keyword in hallucination_keywords):
+            print(f"   [BLIP] Warning: Possible hallucination detected: '{description}'")
+            description = f"Scene unclear - Objects detected: {detected_objects}"
         
         # 4. Set Summary
         state.summary = description
 
         # 5. RAG Integration
-        print("   [RAG] Retrieving context...")
-        context = memory.retrieve(description)
-        state.historical_context = context
-        
         print("   [RAG] Storing image caption...")
         memory.store(description, {"source": state.file_name, "type": "image_caption"})
 
@@ -666,10 +696,166 @@ workflow.add_edge("save", END)
 
 app = workflow.compile()
 
-# --- 5. EXECUTION LOOP (Handles Multiple Files) ---
+# --- 5. EXECUTION LOOP (Async/Parallel Processing) ---
 
-def run_system():
-    print(">>> RAKSHAK SYSTEM STARTED")
+def process_single_file(filename: str) -> tuple[str, bool, str]:
+    """Process a single file through the workflow"""
+    file_path = os.path.join(INCOMING_DIR, filename)
+    
+    # Create initial state
+    initial_state = RakshakState(
+        file_path=file_path,
+        file_name=filename
+    )
+    
+    try:
+        # Invoke Graph
+        app.invoke(initial_state)
+        return (filename, True, "Success")
+    except Exception as e:
+        return (filename, False, str(e))
+
+
+def run_hybrid_system():
+    """
+    Hybrid Execution Strategy (CPU-Friendly):
+    1. Non-Video files (Text/Audio/Image) -> Process in PARALLEL (Fast, lightweight)
+    2. Video files -> Process SEQUENTIALLY (Heavy CPU/GPU usage, avoid overload)
+    
+    This prevents CPU spiking and memory issues when processing multiple videos.
+    """
+    print(">>> RAKSHAK SYSTEM STARTED (Hybrid Mode)")
+    print(f">>> Monitoring: {INCOMING_DIR}")
+    
+    # Get all files
+    all_files = [f for f in os.listdir(INCOMING_DIR) if os.path.isfile(os.path.join(INCOMING_DIR, f))]
+    
+    if not all_files:
+        print(">>> No files found.")
+        return
+    
+    # Split files into categories
+    video_exts = ['.mp4', '.avi', '.mov', '.mkv', '.webm']
+    video_files = [f for f in all_files if os.path.splitext(f)[1].lower() in video_exts]
+    other_files = [f for f in all_files if os.path.splitext(f)[1].lower() not in video_exts]
+    
+    print(f">>> Queue: {len(video_files)} Videos (Sequential) | {len(other_files)} Others (Parallel)")
+    
+    results = []
+    start_time = datetime.now()
+    
+    # --- PHASE 1: PARALLEL PROCESSING (Images, Audio, Text) ---
+    if other_files:
+        print(f"\n--- PHASE 1: Processing {len(other_files)} Lightweight Files in Parallel ---")
+        # Use 4 workers for non-video files (they're CPU/cloud-based, not GPU-heavy)
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_file = {executor.submit(process_single_file, f): f for f in other_files}
+            
+            for future in as_completed(future_to_file):
+                filename, success, message = future.result()
+                results.append((filename, success, message))
+                status = "✓" if success else "✗"
+                print(f"   {status} {filename}")
+    
+    # --- PHASE 2: SEQUENTIAL PROCESSING (Videos) ---
+    if video_files:
+        print(f"\n--- PHASE 2: Processing {len(video_files)} Videos Sequentially (CPU-Safe) ---")
+        for i, filename in enumerate(video_files, 1):
+            print(f"   > Video {i}/{len(video_files)}: {filename}")
+            
+            # Process one video at a time to avoid CPU/GPU overload
+            fname, success, message = process_single_file(filename)
+            results.append((fname, success, message))
+            
+            status = "✓" if success else "✗"
+            print(f"   {status} Completed")
+            
+            # Force garbage collection to free memory for next video
+            gc.collect()
+            
+            # Clear GPU cache if using CUDA (torch is globally imported)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+    
+    # --- SUMMARY ---
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
+    successful = sum(1 for _, success, _ in results if success)
+    failed = len(results) - successful
+    
+    print("\n" + "="*60)
+    print("PROCESSING SUMMARY (Hybrid Mode)")
+    print("="*60)
+    print(f"Total Files: {len(all_files)}")
+    print(f"  - Videos (Sequential): {len(video_files)}")
+    print(f"  - Others (Parallel): {len(other_files)}")
+    print(f"Successful: {successful}")
+    print(f"Failed: {failed}")
+    print(f"Total Duration: {duration:.2f} seconds")
+    if len(all_files) > 0:
+        print(f"Average: {duration/len(all_files):.2f} seconds per file")
+    print("="*60)
+
+
+def run_system_parallel(max_workers: int = 4):
+    """
+    LEGACY: Full parallel processing (may cause CPU spikes with videos)
+    Use run_hybrid_system() instead for better resource management
+    """
+    print(">>> RAKSHAK SYSTEM STARTED (Full Parallel Mode - May cause CPU spikes)")
+    print(f">>> Monitoring: {INCOMING_DIR}")
+    print(f">>> Max Concurrent Workers: {max_workers}")
+    print(">>> WARNING: Consider using hybrid mode for better CPU management")
+    
+    # Get all files in incoming directory
+    files = [f for f in os.listdir(INCOMING_DIR) if os.path.isfile(os.path.join(INCOMING_DIR, f))]
+    
+    if not files:
+        print(">>> No files found.")
+        return
+
+    print(f">>> Found {len(files)} files. Starting parallel processing...\n")
+    
+    # Process files in parallel using ThreadPoolExecutor
+    start_time = datetime.now()
+    results = []
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all files for processing
+        future_to_file = {executor.submit(process_single_file, f): f for f in files}
+        
+        # Collect results as they complete
+        for future in as_completed(future_to_file):
+            filename, success, message = future.result()
+            results.append((filename, success, message))
+            
+            if success:
+                print(f"✓ {filename} - Completed")
+            else:
+                print(f"✗ {filename} - Failed: {message}")
+    
+    # Summary
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
+    successful = sum(1 for _, success, _ in results if success)
+    failed = len(results) - successful
+    
+    print("\n" + "="*60)
+    print("PROCESSING SUMMARY")
+    print("="*60)
+    print(f"Total Files: {len(files)}")
+    print(f"Successful: {successful}")
+    print(f"Failed: {failed}")
+    print(f"Duration: {duration:.2f} seconds")
+    print(f"Average: {duration/len(files):.2f} seconds per file")
+    print("="*60)
+
+
+def run_system_sequential():
+    """Original sequential processing (for comparison or debugging)"""
+    print(">>> RAKSHAK SYSTEM STARTED (Sequential Mode)")
     print(f">>> Monitoring: {INCOMING_DIR}")
     
     # Get all files in incoming directory
@@ -680,6 +866,8 @@ def run_system():
         return
 
     print(f">>> Found {len(files)} files. Starting batch processing...")
+    
+    start_time = datetime.now()
 
     # Iterate through each file and run the graph
     for filename in files:
@@ -696,6 +884,20 @@ def run_system():
             app.invoke(initial_state)
         except Exception as e:
             print(f"!!! Error processing {filename}: {e}")
+    
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    print(f"\n>>> Total Duration: {duration:.2f} seconds")
+
 
 if __name__ == "__main__":
-    run_system()
+    # RECOMMENDED: Hybrid mode (parallel for lightweight, sequential for videos)
+    # This prevents CPU spikes and memory issues
+    run_hybrid_system()
+    
+    # ALTERNATIVE OPTIONS:
+    # 1. Full parallel (may cause CPU spikes with multiple videos):
+    #    run_system_parallel(max_workers=4)
+    #
+    # 2. Sequential (slowest but safest):
+    #    run_system_sequential()

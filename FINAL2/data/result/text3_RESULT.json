@@ -1,0 +1,53 @@
+{
+    "file_name": "text3.txt",
+    "file_type": "text",
+    "timestamp": "2025-11-30T15:00:45.230825",
+    "audio_data": null,
+    "visual_data": null,
+    "text_data": {
+        "entities": [
+            "BRAVO Patrol Team",
+            "taxis",
+            "pony operators",
+            "civilians",
+            "individuals"
+        ],
+        "locations": [
+            "Aru Road",
+            "Forest Checkpost",
+            "Upper Aru Slope",
+            "Pahalgam Army Camp",
+            "Pahalgam Town",
+            "Baisaran Entry Gate",
+            "Trail-1",
+            "Forest Shadow Zone"
+        ],
+        "events": [
+            "Patrol Report 2 \u2013 BRAVO Patrol",
+            "Found shoe prints leading off-road near the forest checkpost",
+            "Observed fresh broken pine twigs near Upper Aru Slope Trail",
+            "Encountered two individuals near Forest Shadow Zone",
+            "Individuals avoided the main trail when patrol approached"
+        ],
+        "time_phrases": [
+            "22 April, 09:30 AM \u2013 11:50 AM",
+            "10:35 AM",
+            "22 April 2025, 08:40 AM \u2013 11:05 AM",
+            "10:12 AM"
+        ],
+        "sentiment_urgency": "Routine",
+        "weapon_details": [],
+        "movement_direction": "From Aru Road to Forest Checkpost",
+        "role_identification": [
+            "Patrol Team",
+            "Civilians",
+            "Pony Operators",
+            "Taxi Operators",
+            "Unknown Individuals"
+        ]
+    },
+    "processing_status": "pending",
+    "error_message": null,
+    "historical_context": "[Ref: text3.txt]: Patrol Report 2 \u2013 BRAVO Patrol (Aru Road \u2192 Forest Checkpoint)\nTeam ID: PT-BRAVO\nBase: Pahalgam Army Camp (Aru Road Side)\nPersonnel: 5\nPatrol Zone: Aru Road \u2192 Forest Checkpost \u2192 Upper Aru Slope\nPatrol Time: 22 April, 09:30 AM \u2013 11:50 AM\n\u201cAru Road had moderate movement of taxis and pony operators.\nAt 10:35 AM, found shoe prints leading off-road near the forest checkpost.\nPattern deeper than civilian sports shoes; likely heavy-sole boots.\nFresh broken pine twigs near Upper Aru Slope Trail.\nArea unusually quiet despite tourist season.\u201d\n\n[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.\n\n[Ref: latest.txt]: Patrol Team Report #1 \u2014 ALPHA-21 (Morning Patrol)\nTeam ID: PT-ALPHA-21\nBase: CRPF Camp Pahalgam\nPatrol Zone: Pahalgam Town \u2192 Baisaran Entry Gate \u2192 Trail-1\nTime: 22 April 2025, 08:40 AM \u2013 11:05 AM\n\u201cNormal movement observed along tourist road.\nAt 10:12 AM, two individuals seen near Forest Shadow Zone (low signal area).\nThey avoided the main trail when patrol approached.",
+    "summary": "A patrol report from the BRAVO team indicates unusual activity near the Forest Checkpost, including shoe prints and broken pine twigs, amidst a relatively quiet area despite the tourist season. The team observed moderate movement of taxis and pony operators along Aru Road."
+}
