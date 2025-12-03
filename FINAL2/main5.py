@@ -119,7 +119,6 @@ class VisualExtraction(BaseModel):
     detection_confidence: Optional[Any] = Field(None)
 
 class TextExtraction(BaseModel):
-    # UPDATED: Changed from List[Any] to Optional[Any] to accept Dicts/Strings without crashing
     entities: Optional[Any] = Field(default_factory=list)
     locations: Optional[Any] = Field(default_factory=list)
     events: Optional[Any] = Field(default_factory=list)
@@ -217,7 +216,7 @@ def parse_filename_metadata(filename: str) -> FileMetadata:
     return meta
 
 def generate_category_summaries():
-    """Generates organized JSON summaries in subfolders"""
+    """Generates organized JSON summaries in the root of JSON_SUMMARY_DIR"""
     print("\n>>> Generating Consolidated JSON Summaries...")
     
     categories = {
@@ -227,57 +226,58 @@ def generate_category_summaries():
         "text":  {"report_type": "consolidated_text_report", "incidents": []}
     }
 
-    for f in os.listdir(RESULT_DIR):
-        if f.endswith("_RESULT.json"):
-            try:
-                with open(os.path.join(RESULT_DIR, f), 'r') as file:
-                    data = json.load(file)
-                    ftype = data.get('file_type')
-                    
-                    if ftype in categories:
-                        incident = {
-                            "file_name": data.get('file_name'),
-                            "timestamp": data.get('timestamp'),
-                            "location_metadata": data.get('file_metadata', {}),
-                            "detailed_summary": data.get('summary', "No summary available."),
-                            "threat_level": "Unknown",
-                            "key_findings": []
-                        }
+    # Iterate through CATEGORY folders in RESULT_DIR
+    for cat in categories.keys():
+        cat_result_dir = os.path.join(RESULT_DIR, cat)
+        
+        if os.path.exists(cat_result_dir):
+            for f in os.listdir(cat_result_dir):
+                if f.endswith("_RESULT.json"):
+                    try:
+                        with open(os.path.join(cat_result_dir, f), 'r') as file:
+                            data = json.load(file)
+                            
+                            # Build the structured incident object
+                            incident = {
+                                "file_name": data.get('file_name'),
+                                "timestamp": data.get('timestamp'),
+                                "location_metadata": data.get('file_metadata', {}),
+                                "detailed_summary": data.get('summary', "No summary available."),
+                                "threat_level": "Unknown",
+                                "key_findings": []
+                            }
 
-                        if ftype in ["video", "image"] and data.get("visual_data"):
-                            vis = data["visual_data"]
-                            incident["threat_level"] = vis.get("threat_posture", "Unknown")
-                            incident["key_findings"] = vis.get("object_detection", [])
-                        
-                        elif ftype == "audio" and data.get("audio_data"):
-                            aud = data["audio_data"]
-                            incident["threat_level"] = "High" if aud.get("gunshot_classification") == "Detected" else "Low"
-                            incident["key_findings"] = [aud.get("background_noise")]
-                        
-                        elif ftype == "text" and data.get("text_data"):
-                            txt = data["text_data"]
-                            incident["threat_level"] = str(txt.get("sentiment_urgency", "Unknown"))
-                            # Safe handling of entities
-                            entities = txt.get("entities")
-                            if isinstance(entities, list):
-                                incident["key_findings"] = entities[:5]
-                            elif isinstance(entities, dict):
-                                incident["key_findings"] = list(entities.values())[:5] # Convert dict values to list
+                            if cat in ["video", "image"] and data.get("visual_data"):
+                                vis = data["visual_data"]
+                                incident["threat_level"] = vis.get("threat_posture", "Unknown")
+                                incident["key_findings"] = vis.get("object_detection", [])
+                            
+                            elif cat == "audio" and data.get("audio_data"):
+                                aud = data["audio_data"]
+                                incident["threat_level"] = "High" if aud.get("gunshot_classification") == "Detected" else "Low"
+                                incident["key_findings"] = [aud.get("background_noise")]
+                            
+                            elif cat == "text" and data.get("text_data"):
+                                txt = data["text_data"]
+                                incident["threat_level"] = str(txt.get("sentiment_urgency", "Unknown"))
+                                entities = txt.get("entities")
+                                if isinstance(entities, list):
+                                    incident["key_findings"] = entities[:5]
+                                elif isinstance(entities, dict):
+                                    incident["key_findings"] = list(entities.values())[:5]
 
-                        categories[ftype]["incidents"].append(incident)
-            except Exception as e:
-                print(f"   [Error reading {f}]: {e}")
+                            categories[cat]["incidents"].append(incident)
+                    except Exception as e:
+                        print(f"   [Error reading {f}]: {e}")
 
-    # Write files to Specific Subfolders
+    # Write files directly to JSON_SUMMARY_DIR (No Subfolders)
     for cat, content in categories.items():
         if content["incidents"]:
             content["generated_at"] = datetime.now().isoformat()
             content["total_files"] = len(content["incidents"])
             
-            cat_dir = os.path.join(JSON_SUMMARY_DIR, cat)
-            os.makedirs(cat_dir, exist_ok=True)
-            
-            out_path = os.path.join(cat_dir, f"{cat}s_summary.json")
+            # Save file: data/jsonsummary/videos_summary.json
+            out_path = os.path.join(JSON_SUMMARY_DIR, f"{cat}s_summary.json")
             with open(out_path, 'w', encoding='utf-8') as f:
                 json.dump(content, f, indent=4)
             print(f"   [Report] Created {out_path}")
@@ -459,8 +459,17 @@ def image_node(state: RakshakState) -> RakshakState:
 
 def save_node(state: RakshakState) -> RakshakState:
     output = state.model_dump(exclude={'file_path'})
-    json_path = os.path.join(RESULT_DIR, f"{os.path.splitext(state.file_name)[0]}_RESULT.json")
-    with open(json_path, 'w') as f: json.dump(output, f, indent=4)
+    
+    # 1. Determine Folder based on Type
+    type_folder = os.path.join(RESULT_DIR, state.file_type) # e.g. data/result/video/
+    os.makedirs(type_folder, exist_ok=True)
+    
+    # 2. Save Path
+    json_path = os.path.join(type_folder, f"{os.path.splitext(state.file_name)[0]}_RESULT.json")
+    
+    with open(json_path, 'w') as f:
+        json.dump(output, f, indent=4)
+        
     dest = os.path.join(PROCESSED_DIR, state.file_name)
     if os.path.exists(dest): os.remove(dest)
     shutil.move(state.file_path, dest)
