@@ -1,12 +1,6 @@
 import os
 import warnings
 import gc
-
-# Suppress TensorFlow warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
-warnings.filterwarnings('ignore')
-
 import json
 import shutil
 import csv
@@ -24,7 +18,6 @@ import subprocess
 import pymupdf
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from PIL import Image
-from ultralytics import YOLO
 from transformers import pipeline
 from groq import Groq
 from datetime import datetime
@@ -35,18 +28,22 @@ import chromadb
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
+# Suppress TensorFlow warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+warnings.filterwarnings('ignore')
+
+os.environ["TFHUB_CACHE_DIR"] = os.path.join(os.getcwd(), "tfhub_cache")
+os.makedirs(os.environ["TFHUB_CACHE_DIR"], exist_ok=True)
+
 load_dotenv()
 
+# --- 🔑 API KEY ROTATION SYSTEM ---
 API_KEYS = []
-
-if os.getenv("GROQ_API_KEY"):
-    API_KEYS.append(os.getenv("GROQ_API_KEY"))
-
+if os.getenv("GROQ_API_KEY"): API_KEYS.append(os.getenv("GROQ_API_KEY"))
 for i in range(1, 10):
     key = os.getenv(f"GROQ_API_KEY{i}")
-    if key:
-        API_KEYS.append(key)
-
+    if key: API_KEYS.append(key)
 API_KEYS = list(set([k for k in API_KEYS if k]))
 
 if not API_KEYS:
@@ -57,29 +54,10 @@ print(f"Loaded {len(API_KEYS)} API Key(s) for rotation.")
 KEY_CYCLE = itertools.cycle(API_KEYS)
 
 def get_groq_client():
-    next_key = next(KEY_CYCLE)
-    return Groq(api_key=next_key)
+    return Groq(api_key=next(KEY_CYCLE))
 
 # --- CONSTANTS ---
 VISION_MODEL_ID = "meta-llama/llama-4-maverick-17b-128e-instruct"
-
-# ----------------------------------
-
-try:
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-except ImportError:
-    class RecursiveCharacterTextSplitter:
-        def __init__(self, chunk_size=1000, chunk_overlap=200):
-            self.chunk_size = chunk_size
-            self.chunk_overlap = chunk_overlap
-        def split_text(self, text):
-            return [text[i:i+self.chunk_size] for i in range(0, len(text), self.chunk_size - self.chunk_overlap)]
-
-_original_torch_load = torch.load
-def _patched_torch_load(f, map_location=None, pickle_module=None, *, weights_only=None, **kwargs):
-    if weights_only is None: weights_only = False
-    return _original_torch_load(f, map_location=map_location, pickle_module=pickle_module, weights_only=weights_only, **kwargs)
-torch.load = _patched_torch_load
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -90,9 +68,6 @@ RESULT_DIR = os.path.join(DATA_DIR, "result")
 JSON_SUMMARY_DIR = os.path.join(DATA_DIR, "jsonsummary")
 TEMP_DIR = os.path.join(DATA_DIR, "temp_processing")
 CHROMA_DB_DIR = os.path.join(DATA_DIR, "chroma_db")
-
-WEAPON_MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
-PERSON_MODEL_PATH = os.path.join(BASE_DIR, "yolov8n.pt")
 
 for d in [INCOMING_DIR, PROCESSED_DIR, RESULT_DIR, JSON_SUMMARY_DIR, TEMP_DIR, CHROMA_DB_DIR]:
     os.makedirs(d, exist_ok=True)
@@ -112,8 +87,9 @@ class AudioExtraction(BaseModel):
 
 class VisualExtraction(BaseModel):
     object_detection: List[str] = Field(default_factory=list)
-    number_of_attackers: Optional[int] = Field(None)
+    number_of_persons: Optional[int] = Field(None) # Renamed field
     threat_posture: Optional[str] = Field(None)
+    force_identification: Optional[str] = Field(None) # New IFF field
     environment_clues: List[str] = Field(default_factory=list)
     detection_confidence: Optional[Any] = Field(None)
 
@@ -122,9 +98,7 @@ class TextExtraction(BaseModel):
     locations: Optional[Any] = Field(default_factory=list)
     events: Optional[Any] = Field(default_factory=list)
     sentiment_urgency: Optional[Any] = Field(None)
-    
-    class Config:
-        extra = 'allow'
+    class Config: extra = 'allow'
 
 class RakshakState(BaseModel):
     file_path: str
@@ -132,12 +106,9 @@ class RakshakState(BaseModel):
     file_type: Literal["text", "audio", "video", "image", "unknown"] = "unknown"
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
     file_metadata: Optional[FileMetadata] = Field(default_factory=FileMetadata)
-    
     audio_data: Optional[AudioExtraction] = None
     visual_data: Optional[VisualExtraction] = None
     text_data: Optional[TextExtraction] = None
-    
-    #processing_status: str = "pending"
     error_message: Optional[str] = None
     summary: Optional[str] = None
 
@@ -148,13 +119,11 @@ class RakshakMemory:
         self.embedder = SentenceTransformer('all-MiniLM-L6-v2')
         self.chroma_client = chromadb.PersistentClient(path=CHROMA_DB_DIR)
         self.collection = self.chroma_client.get_or_create_collection(name="rakshak_intel_logs")
-        self.splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-
     def store(self, text: str, metadata: dict):
         if not text: return
-        chunks = self.splitter.split_text(text)
+        chunk_size = 1000
+        chunks = [text[i:i+chunk_size] for i in range(0, len(text), chunk_size)]
         ids, embeddings, docs, metas = [], [], [], []
-        
         for idx, chunk in enumerate(chunks):
             chunk_id = f"{metadata.get('source', 'unknown')}_{idx}_{uuid.uuid4().hex[:6]}"
             embeddings.append(self.embedder.encode(chunk).tolist())
@@ -163,40 +132,21 @@ class RakshakMemory:
             meta = metadata.copy()
             meta.update({'chunk_index': idx, 'timestamp': datetime.now().isoformat()})
             metas.append(meta)
-            
-        if ids:
-            self.collection.upsert(ids=ids, embeddings=embeddings, documents=docs, metadatas=metas)
-
+        if ids: self.collection.upsert(ids=ids, embeddings=embeddings, documents=docs, metadatas=metas)
 memory = RakshakMemory()
-
-# --- YOLO SETUP ---
-print(" Loading YOLO models...")
-YOLO_PERSON = YOLO(PERSON_MODEL_PATH)
-YOLO_WEAPON = YOLO(WEAPON_MODEL_PATH) if os.path.exists(WEAPON_MODEL_PATH) else None
-
-if torch.cuda.is_available():
-    print(f" GPU Detected: {torch.cuda.get_device_name(0)}")
-    YOLO_PERSON.to('cuda')
-    if YOLO_WEAPON: YOLO_WEAPON.to('cuda')
-    torch.backends.cudnn.benchmark = True
-else:
-    print("  No GPU - using CPU")
-print(" YOLO models loaded\n")
 
 # --- HELPER FUNCTIONS ---
 
 def call_groq_with_retry(func, max_retries=3):
     for attempt in range(max_retries):
-        try:
-            return func()
+        try: return func()
         except Exception as e:
             if attempt == max_retries - 1: raise e
             time.sleep(1)
 
 def encode_image(image_path_or_array):
     if isinstance(image_path_or_array, str):
-        with open(image_path_or_array, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
+        with open(image_path_or_array, "rb") as image_file: return base64.b64encode(image_file.read()).decode('utf-8')
     else:
         _, buffer = cv2.imencode('.jpg', image_path_or_array)
         return base64.b64encode(buffer).decode('utf-8')
@@ -214,108 +164,42 @@ def parse_filename_metadata(filename: str) -> FileMetadata:
         meta.date = parts[1]
     return meta
 
+def extract_json_from_text(text):
+    try:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if match: return json.loads(match.group())
+    except: pass
+    return {}
+
 def store_results_in_chromadb():
-    """Scans result directory, converts JSONs to text, and stores in ChromaDB"""
     print("\n>>> Storing Results in ChromaDB...")
-    
     categories = ["video", "audio", "image", "text"]
     stored_count = 0
-    
     for cat in categories:
         cat_result_dir = os.path.join(RESULT_DIR, cat)
-        
-        if not os.path.exists(cat_result_dir):
-            continue
-        
+        if not os.path.exists(cat_result_dir): continue
         for f in os.listdir(cat_result_dir):
             if f.endswith("_RESULT.json"):
                 try:
                     with open(os.path.join(cat_result_dir, f), 'r', encoding='utf-8') as file:
                         data = json.load(file)
-                    
-                    # Convert JSON to readable text format
-                    text_parts = []
-                    
-                    # Basic info
-                    text_parts.append(f"File: {data.get('file_name')}")
-                    text_parts.append(f"Type: {data.get('file_type')}")
-                    
-                    # Metadata
-                    meta = data.get('file_metadata', {})
-                    text_parts.append(f"Location: {meta.get('place', 'Unknown')}")
-                    text_parts.append(f"Date: {meta.get('date', 'Unknown')}")
-                    text_parts.append(f"Time: {meta.get('time', 'Unknown')}")
-                    
-                    # Summary
-                    if data.get('summary'):
-                        text_parts.append(f"\nSummary: {data['summary']}")
-                    
-                    # Type-specific data
-                    if cat in ["video", "image"] and data.get("visual_data"):
-                        vis = data["visual_data"]
-                        text_parts.append(f"\nThreat Posture: {vis.get('threat_posture', 'Unknown')}")
-                        text_parts.append(f"Objects Detected: {', '.join(vis.get('object_detection', []))}")
-                        text_parts.append(f"Number of Attackers: {vis.get('number_of_attackers', 0)}")
-                        if vis.get('environment_clues'):
-                            text_parts.append(f"Environment: {' '.join(vis['environment_clues'][:2])}")
-                    
-                    if cat == "audio" and data.get("audio_data"):
-                        aud = data["audio_data"]
-                        text_parts.append(f"\nGunshot: {aud.get('gunshot_classification', 'None')}")
-                        text_parts.append(f"Screams/Panic: {aud.get('screams_panic', False)}")
-                        text_parts.append(f"Background: {aud.get('background_noise', 'None')}")
-                    
-                    if cat == "text" and data.get("text_data"):
-                        txt = data["text_data"]
-                        text_parts.append(f"\nSentiment/Urgency: {txt.get('sentiment_urgency', 'Unknown')}")
-                        entities = txt.get('entities', [])
-                        if entities:
-                            text_parts.append(f"Entities: {str(entities)[:200]}")
-                    
-                    # Combine into single text
+                    text_parts = [f"File: {data.get('file_name')}"]
+                    if data.get('summary'): text_parts.append(f"Summary: {data['summary']}")
                     full_text = "\n".join(text_parts)
-                    
-                    # Store in ChromaDB with enhanced metadata
-                    metadata = {
-                        "source": data.get('file_name'),
-                        "type": cat,
-                        "location": meta.get('place', 'Unknown'),
-                        "date": meta.get('date', 'Unknown'),
-                        "time": meta.get('time', 'Unknown'),
-                        "timestamp": data.get('timestamp', datetime.now().isoformat())
-                    }
-                    
-                    # Add threat-specific metadata
-                    if cat in ["video", "image"] and data.get("visual_data"):
-                        metadata["threat_posture"] = data["visual_data"].get("threat_posture", "Unknown")
-                        metadata["has_weapons"] = len(data["visual_data"].get("object_detection", [])) > 0
-                    
-                    if cat == "audio" and data.get("audio_data"):
-                        metadata["gunshot_detected"] = data["audio_data"].get("gunshot_classification") == "Detected"
-                    
+                    meta = data.get('file_metadata', {})
+                    metadata = {"source": data.get('file_name'), "type": cat, "location": meta.get('place', 'Unknown')}
                     memory.store(full_text, metadata)
                     stored_count += 1
-                    
-                except Exception as e:
-                    print(f"   [Error storing {f}]: {e}")
-    
+                except Exception as e: print(f"   [Error storing {f}]: {e}")
     print(f"   ✓ Stored {stored_count} results in ChromaDB")
 
 def generate_category_summaries():
-    """Generates AI-analyzed summaries for each category"""
     print("\n>>> Generating Consolidated JSON Summaries...")
-    
     categories = ["video", "audio", "image", "text"]
-
     for cat in categories:
         cat_result_dir = os.path.join(RESULT_DIR, cat)
-        
-        if not os.path.exists(cat_result_dir):
-            continue
-            
+        if not os.path.exists(cat_result_dir): continue
         files_data = []
-        
-        # Collect all result files
         for f in os.listdir(cat_result_dir):
             if f.endswith("_RESULT.json"):
                 try:
@@ -324,64 +208,24 @@ def generate_category_summaries():
                         files_data.append({
                             "file_name": data.get('file_name'),
                             "location": data.get('file_metadata', {}).get('place', 'Unknown'),
-                            "date": data.get('file_metadata', {}).get('date', 'Unknown'),
-                            "time": data.get('file_metadata', {}).get('time', 'Unknown'),
-                            "summary": data.get('summary', 'No summary')[:800]
+                            "summary": data.get('summary', 'No summary')[:500]
                         })
-                except Exception as e:
-                    print(f"   [Error reading {f}]: {e}")
+                except Exception as e: print(f"   [Error reading {f}]: {e}")
         
-        if not files_data:
-            continue
+        if not files_data: continue
         
-        # Build prompt for LLM
-        files_info = "\n".join([
-            f"- {item['file_name']} (Location: {item['location']}, Date: {item['date']}, Time: {item['time']}): {item['summary']}"
-            for item in files_data
-        ])
-        
-        prompt = f"""Analyze these {cat} intelligence files and provide a consolidated situational summary.
-
-Files:
-{files_info}
-
-Provide a JSON response with:
-1. "overall_situation": Brief assessment of the overall situation across all files.Do it in our 5 lines.
-2. "related_incidents": If files are related/connected, explain how by giving file name refernece tell us the "how" part if they are related.
-3. "individual_summaries": Array of brief summaries for each file (file_name and what it contains)
-4. "threat_assessment": Overall threat level and key concerns
-
-Keep it concise and tactical."""
-
+        files_info = "\n".join([f"- {item['file_name']} (Loc: {item['location']}): {item['summary']}" for item in files_data])
+        prompt = f"""Analyze these {cat} files. Provide JSON: "overall_situation", "related_incidents", "individual_summaries", "threat_assessment". Files: {files_info}"""
         try:
             groq_client = get_groq_client()
-            def summary_call():
-                return groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
-                    temperature=0.3,
-                    max_tokens=1000
-                )
-            
+            def summary_call(): return groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"}, temperature=0.3, max_tokens=1000)
             response = call_groq_with_retry(summary_call)
             analysis = json.loads(response.choices[0].message.content)
-            
-            # Build final output
-            output = {
-                "report_type": f"consolidated_{cat}_analysis",
-                "generated_at": datetime.now().isoformat(),
-                "total_files": len(files_data),
-                "analysis": analysis
-            }
-            
+            output = {"report_type": f"consolidated_{cat}_analysis", "generated_at": datetime.now().isoformat(), "total_files": len(files_data), "analysis": analysis}
             out_path = os.path.join(JSON_SUMMARY_DIR, f"{cat}s_summary.json")
-            with open(out_path, 'w', encoding='utf-8') as f:
-                json.dump(output, f, indent=4)
+            with open(out_path, 'w', encoding='utf-8') as f: json.dump(output, f, indent=4)
             print(f"   [Report] Created {out_path}")
-            
-        except Exception as e:
-            print(f"   [Error generating {cat} summary]: {e}")
+        except Exception as e: print(f"   [Error generating {cat} summary]: {e}")
 
 # --- NODES ---
 
@@ -414,6 +258,7 @@ def text_node(state: RakshakState) -> RakshakState:
             return groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}], response_format={"type": "json_object"})
         completion = call_groq_with_retry(text_call)
         analysis = json.loads(completion.choices[0].message.content)
+        memory.store(content, {"source": state.file_name, "type": "text"})
         state.summary = analysis.get("summary", "No summary.")
         state.text_data = TextExtraction(**analysis)
     except Exception as e:
@@ -426,11 +271,7 @@ def audio_node(state: RakshakState) -> RakshakState:
     try:
         wav_data, sr = librosa.load(state.file_path, sr=16000, mono=True)
         rmse = librosa.feature.rms(y=wav_data)[0]
-        onset_env = librosa.onset.onset_strength(y=wav_data, sr=sr)
         volume_spike = np.max(rmse) > (np.mean(rmse) * 4)
-        sudden_onset = np.max(onset_env) > 5.0
-        high_energy_event = volume_spike and sudden_onset
-        if high_energy_event: print(f"      [Audio Physics] High Energy Impulse detected")
         yamnet = tfhub.load('https://tfhub.dev/google/yamnet/1')
         class_names = [row[2] for row in csv.reader(open(yamnet.class_map_path().numpy()))][1:]
         scores, _, _ = yamnet(wav_data)
@@ -445,7 +286,7 @@ def audio_node(state: RakshakState) -> RakshakState:
                 if "Speech" in sound: has_speech = True
                 if any(x in sound for x in ["Gunshot", "Explosion", "Bang", "Blast", "Burst", "Fire"]): gunshot = True
                 if "Scream" in sound: scream = True
-        if high_energy_event and not gunshot:
+        if volume_spike and not gunshot:
             detected.append("Impulse Event (Physics)")
             gunshot = True
         transcript = ""
@@ -457,48 +298,95 @@ def audio_node(state: RakshakState) -> RakshakState:
             try: transcript = call_groq_with_retry(whisper_call).text
             except: pass
         state.audio_data = AudioExtraction(gunshot_classification="Detected" if gunshot else "None", screams_panic=scream, background_noise=", ".join(detected), times_detected=datetime.now().strftime("%H:%M:%S"))
-        state.summary = f"Detected: {', '.join(detected)}. Transcript: {transcript[:800]}..."
+        state.summary = f"Detected: {', '.join(detected)}. Transcript: {transcript[:500]}..."
+        if transcript: memory.store(transcript, {"source": state.file_name, "type": "audio"})
     except Exception as e:
         print(f"   [Error] Audio failed: {e}")
         state.error_message = str(e)
     return state
 
+# --- VIDEO NODE (VISION ONLY + IDENTITY) ---
 def video_node(state: RakshakState) -> RakshakState:
-    print(f"[{state.file_name}] Processing Video...")
+    print(f"[{state.file_name}] Processing Video (Llama Vision)...")
     try:
         cap = cv2.VideoCapture(state.file_path)
         fps = cap.get(cv2.CAP_PROP_FPS) or 30
-        detected_objs = []
+        
         max_people = 0
-        weapon_detected = False
+        all_objects = set()
         descriptions = []
+        is_armed = False
+        force_type_found = "Unknown"
+        
         frame_count = 0
+        groq_client = get_groq_client()
+
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret: break
+            
+            # Analyze every 2 seconds
             if frame_count % 60 == 0:
-                p_count = len(YOLO_PERSON.predict(frame, classes=[0], verbose=False, conf=0.25)[0].boxes)
-                max_people = max(max_people, p_count)
-                w_names = []
-                if YOLO_WEAPON:
-                    w_res = YOLO_WEAPON.predict(frame, verbose=False, conf=0.60)
-                    for box in w_res[0].boxes:
-                        name = w_res[0].names[int(box.cls[0])]
-                        w_names.append(name)
-                        detected_objs.append(name)
-                        weapon_detected = True
-                if p_count > 0 or w_names or (frame_count % 120 == 0):
-                    try:
-                        base64_image = encode_image(frame)
-                        groq_client = get_groq_client()
-                        def vision_call():
-                            return groq_client.chat.completions.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Analyze this surveillance frame for security threats. Detect: Armed personnel, Weapons, Bunkers, Smoke."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]}], model=VISION_MODEL_ID, temperature=0.1, max_tokens=100)
-                        desc = call_groq_with_retry(vision_call).choices[0].message.content
+                try:
+                    base64_image = encode_image(frame)
+                    current_client = get_groq_client()
+                    
+                    prompt = """
+                    Analyze this surveillance frame.
+                    
+                    1. COUNT: People and Weapons.
+                    2. IDENTIFY FORCE TYPE (Look at Uniforms):
+                       - "Regular Military": Matching full camo, helmets, standard gear.
+                       - "Irregular Hostile": Mixed civilian/camo, bandanas, non-standard gear.
+                       - "Civilian": No military gear.
+                    3. POSTURE: Passive vs Active.
+
+                    Return JSON ONLY:
+                    {
+                        "person_count": int,
+                        "weapons_detected": ["list"],
+                        "force_type": "Regular Military" or "Irregular Hostile" or "Civilian",
+                        "threat_level": "High/Med/Low",
+                        "description": "brief summary"
+                    }
+                    """
+                    
+                    def vision_call():
+                        return current_client.chat.completions.create(
+                            messages=[
+                                {"role": "user", "content": [
+                                    {"type": "text", "text": prompt},
+                                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                                ]}
+                            ],
+                            model=VISION_MODEL_ID,
+                            temperature=0.1, max_tokens=200
+                        )
+
+                    response = call_groq_with_retry(vision_call)
+                    data = extract_json_from_text(response.choices[0].message.content)
+                    
+                    if data:
+                        p_cnt = data.get("person_count", 0)
+                        w_list = data.get("weapons_detected", [])
+                        force_type = data.get("force_type", "Unknown")
+                        
+                        max_people = max(max_people, p_cnt)
+                        all_objects.update(w_list)
+                        if w_list: is_armed = True
+                        if force_type != "Unknown": force_type_found = force_type
+                        
+                        desc = data.get("description", "")
                         descriptions.append(desc)
-                        print(f"      [Vision] Time {frame_count/fps:.1f}s | {desc[:60]}...")
-                    except Exception as e: print(f"      [Vision Skipped] Network/Rate Limit")
+                        print(f"      [Vision] Pax: {p_cnt} | ID: {force_type} | Wpn: {w_list}")
+
+                except Exception as e:
+                    print(f"      [Vision Skipped] {e}")
+
             frame_count += 1
         cap.release()
+        
+        # Audio Extraction
         audio_path = os.path.join(TEMP_DIR, f"{state.file_name}.wav")
         subprocess.run(f'ffmpeg -y -i "{state.file_path}" -vn -ac 1 -ar 16000 "{audio_path}" -loglevel quiet', shell=True)
         detected_sounds, gunshot_detected, scream_detected = [], False, False
@@ -510,46 +398,87 @@ def video_node(state: RakshakState) -> RakshakState:
             for i in np.argsort(np.mean(yamnet(wav_data)[0], axis=0))[::-1][:5]:
                 sound = class_names[i]
                 detected_sounds.append(sound)
-                if any(x in sound for x in ["Gunshot", "Explosion", "Bang", "Blast", "Burst", "Fire"]): gunshot_detected = True
-                if "Scream" in sound: scream_detected = True
+                if any(x in sound for x in ["Gunshot", "Explosion"]): gunshot_detected = True
             os.remove(audio_path)
+            
+        # Summary
         groq_client = get_groq_client()
         val_res = {"is_credible": True, "confidence": "Medium"}
         try:
-            val_prompt = f"Validate Threat. Visuals: {list(set(descriptions))[:3]}. Weapons: {list(set(detected_objs))}. Audio: {detected_sounds}. Explosion: {gunshot_detected}. Output JSON: is_credible, confidence, reasoning"
+            val_prompt = f"Validate Threat. Visuals: {list(set(descriptions))[:3]}. Weapons: {list(set(all_objects))}. Audio: {detected_sounds}."
             def val_call(): return groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": val_prompt}], response_format={"type": "json_object"})
             val_res = json.loads(call_groq_with_retry(val_call).choices[0].message.content)
         except: pass
-        groq_client = get_groq_client()
-        def summary_call(): return groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "system", "content": "Military AI. Provide a detailed, elaborative tactical summary of the event."}, {"role": "user", "content": f"Vision: {list(set(descriptions))[:5]}. Audio: {detected_sounds}."}], max_tokens=250)
+        
+        sys_prompt = "Military AI. Summarize the event."
+        def summary_call(): return groq_client.chat.completions.create(model="llama-3.3-70b-versatile", messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": f"Vision: {list(set(descriptions))[:5]}."}], max_tokens=250)
         state.summary = call_groq_with_retry(summary_call).choices[0].message.content
-        threat_level = "Armed" if weapon_detected or any("firing" in d.lower() for d in descriptions) else "Unarmed"
-        state.visual_data = VisualExtraction(object_detection=list(set(detected_objs)), number_of_attackers=max_people, threat_posture=f"{threat_level} ({val_res.get('confidence', 'med')})", environment_clues=list(set(descriptions))[:5], detection_confidence=val_res.get('confidence', 'high'))
-        state.audio_data = AudioExtraction(gunshot_classification="Detected" if gunshot_detected else "None", screams_panic=scream_detected, background_noise=", ".join(detected_sounds))
+        
+        state.visual_data = VisualExtraction(
+            object_detection=list(all_objects), 
+            number_of_persons=max_people, 
+            threat_posture="Armed" if is_armed else "Unarmed", 
+            force_identification=force_type_found,
+            environment_clues=list(set(descriptions))[:5], 
+            detection_confidence=val_res.get('confidence', 'high')
+        )
+        state.audio_data = AudioExtraction(gunshot_classification="Detected" if gunshot_detected else "None", background_noise=", ".join(detected_sounds))
+        
     except Exception as e:
         print(f"   [Error] Video failed: {e}")
         state.error_message = str(e)
     return state
 
+# --- IMAGE NODE (VISION ONLY + IDENTITY) ---
 def image_node(state: RakshakState) -> RakshakState:
-    print(f"[{state.file_name}] Processing Image...")
+    print(f"[{state.file_name}] Processing Image (Llama Vision)...")
     try:
-        img = cv2.imread(state.file_path)
-        p_count = len(YOLO_PERSON.predict(img, classes=[0], verbose=False, conf=0.35)[0].boxes)
-        objs = [f"{p_count} Person(s)"] if p_count else []
-        weapon_count = 0
-        if YOLO_WEAPON:
-            res_w = YOLO_WEAPON.predict(img, verbose=False, conf=0.65)
-            weapon_count = len(res_w[0].boxes)
-            objs.extend([res_w[0].names[int(c)] for c in res_w[0].boxes.cls])
-        try:
-            base64_image = encode_image(state.file_path)
-            groq_client = get_groq_client()
-            def vision_call(): return groq_client.chat.completions.create(messages=[{"role": "user", "content": [{"type": "text", "text": "Analyze this surveillance frame for security threats. Detect: Armed personnel, Weapons, Bunkers, Smoke."}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]}], model=VISION_MODEL_ID, temperature=0.1, max_tokens=100)
-            desc = call_groq_with_retry(vision_call).choices[0].message.content
-        except Exception as e: desc = "Vision analysis unavailable"
-        state.summary = desc
-        state.visual_data = VisualExtraction(object_detection=objs, number_of_attackers=p_count, threat_posture="Armed" if weapon_count else "Unknown", environment_clues=[desc])
+        base64_image = encode_image(state.file_path)
+        groq_client = get_groq_client()
+        
+        prompt = """
+        Analyze image. 
+        1. COUNT People/Weapons.
+        2. IDENTIFY FORCE TYPE (Uniforms): Regular Military / Irregular Hostile / Civilian.
+        3. POSTURE: Passive vs Active.
+
+        Return JSON ONLY:
+        {
+            "person_count": int,
+            "weapons_detected": ["list"],
+            "force_type": "string",
+            "threat_level": "High/Med/Low",
+            "description": "summary"
+        }
+        """
+        
+        def vision_call():
+            return groq_client.chat.completions.create(
+                messages=[
+                    {"role": "user", "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                    ]}
+                ],
+                model=VISION_MODEL_ID,
+                temperature=0.1
+            )
+            
+        response = call_groq_with_retry(vision_call)
+        data = extract_json_from_text(response.choices[0].message.content)
+        
+        if not data: data = {"description": "Vision failed to parse"}
+
+        state.summary = data.get("description")
+        memory.store(state.summary, {"source": state.file_name, "type": "image"})
+        
+        state.visual_data = VisualExtraction(
+            object_detection=data.get("weapons_detected", []),
+            number_of_persons=data.get("person_count", 0),
+            threat_posture="Armed" if data.get("weapons_detected") else "Unknown",
+            force_identification=data.get("force_type", "Unknown"),
+            environment_clues=[data.get("description")]
+        )
     except Exception as e:
         print(f"   [Error] Image failed: {e}")
         state.error_message = str(e)
@@ -557,17 +486,10 @@ def image_node(state: RakshakState) -> RakshakState:
 
 def save_node(state: RakshakState) -> RakshakState:
     output = state.model_dump(exclude={'file_path'})
-    
-    # 1. Determine Folder based on Type
-    type_folder = os.path.join(RESULT_DIR, state.file_type) # e.g. data/result/video/
+    type_folder = os.path.join(RESULT_DIR, state.file_type)
     os.makedirs(type_folder, exist_ok=True)
-    
-    # 2. Save Path
     json_path = os.path.join(type_folder, f"{os.path.splitext(state.file_name)[0]}_RESULT.json")
-    
-    with open(json_path, 'w') as f:
-        json.dump(output, f, indent=4)
-        
+    with open(json_path, 'w') as f: json.dump(output, f, indent=4)
     dest = os.path.join(PROCESSED_DIR, state.file_name)
     if os.path.exists(dest): os.remove(dest)
     shutil.move(state.file_path, dest)
@@ -597,77 +519,42 @@ app = workflow.compile()
 def process_single_file(filename: str):
     file_path = os.path.join(INCOMING_DIR, filename)
     try:
-        # Invoke returns the FINAL STATE
         result = app.invoke(RakshakState(file_path=file_path, file_name=filename))
-        
-        # FIX: Force conversion to dictionary to avoid Pydantic access errors
-        if isinstance(result, BaseModel):
-            state_dict = result.model_dump()
-        elif isinstance(result, dict):
-            state_dict = result
-        else:
-            state_dict = result.__dict__ # Fallback
-
-        # Check error message
+        if isinstance(result, BaseModel): state_dict = result.model_dump()
+        elif isinstance(result, dict): state_dict = result
+        else: state_dict = result.__dict__
         error_msg = state_dict.get('error_message')
-        
-        # If error_msg is None or empty, it's a success
-        if not error_msg:
-            return (filename, True, "Success")
-        else:
-            return (filename, False, error_msg)
-
-    except Exception as e:
-        return (filename, False, str(e))
+        return (filename, not error_msg, error_msg if error_msg else "Success")
+    except Exception as e: return (filename, False, str(e))
 
 def run_hybrid_system():
-    print(">>> RAKSHAK SYSTEM STARTED (Llama 4 Vision + Multi-Key Rotation)")
-    
+    print(">>> RAKSHAK SYSTEM STARTED (Vision Only + IFF Identity)")
     files = [f for f in os.listdir(INCOMING_DIR) if os.path.isfile(os.path.join(INCOMING_DIR, f))]
-    
     if not files: 
         print(">>> No files in incoming directory.")
-        # Even if no NEW files, we might want to regenerate summaries for existing results
         generate_category_summaries()
         return
-    
     videos = [f for f in files if os.path.splitext(f)[1].lower() in ['.mp4', '.avi', '.mov', '.mkv']]
     others = [f for f in files if f not in videos]
-    
     results = []
-    
-    # Phase 1: Parallel
     if others:
         print(f"\n--- Processing {len(others)} Files (Parallel) ---")
         with ThreadPoolExecutor(max_workers=4) as ex:
             for fut in as_completed({ex.submit(process_single_file, f): f for f in others}):
                 res = fut.result()
                 results.append(res)
-                # Print status
-                status_icon = '✓' if res[1] else '✗'
-                print(f"   {status_icon} {res[0]}")
-                
-    # Phase 2: Sequential
+                print(f"   {'✓' if res[1] else '✗'} {res[0]}")
     if videos:
         print(f"\n--- Processing {len(videos)} Videos (Sequential) ---")
         for v in videos:
             res = process_single_file(v)
             results.append(res)
-            # Print status
-            status_icon = '✓' if res[1] else '✗'
-            print(f"   {status_icon} {res[0]}")
-            
-            # Cleanup
+            print(f"   {'✓' if res[1] else '✗'} {res[0]}")
             gc.collect()
             if torch.cuda.is_available(): torch.cuda.empty_cache()
-
     successful_count = sum(1 for _, s, _ in results if s)
     print(f"\n{'='*60}\nSUMMARY: {successful_count}/{len(files)} Successful\n{'='*60}")
-    
-    # Store all results in ChromaDB
     store_results_in_chromadb()
-    
-    # Generate consolidated summaries
     generate_category_summaries()
 
 if __name__ == "__main__":
