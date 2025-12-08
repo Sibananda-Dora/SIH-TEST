@@ -37,7 +37,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# --- 🔑 API KEY ROTATION SYSTEM ---
 API_KEYS = []
 
 if os.getenv("GROQ_API_KEY"):
@@ -171,18 +170,18 @@ class RakshakMemory:
 memory = RakshakMemory()
 
 # --- YOLO SETUP ---
-print("🔄 Loading YOLO models...")
+print(" Loading YOLO models...")
 YOLO_PERSON = YOLO(PERSON_MODEL_PATH)
 YOLO_WEAPON = YOLO(WEAPON_MODEL_PATH) if os.path.exists(WEAPON_MODEL_PATH) else None
 
 if torch.cuda.is_available():
-    print(f"✅ GPU Detected: {torch.cuda.get_device_name(0)}")
+    print(f" GPU Detected: {torch.cuda.get_device_name(0)}")
     YOLO_PERSON.to('cuda')
     if YOLO_WEAPON: YOLO_WEAPON.to('cuda')
     torch.backends.cudnn.benchmark = True
 else:
-    print("⚠️  No GPU - using CPU")
-print("✅ YOLO models loaded\n")
+    print("  No GPU - using CPU")
+print(" YOLO models loaded\n")
 
 # --- HELPER FUNCTIONS ---
 
@@ -327,7 +326,7 @@ def generate_category_summaries():
                             "location": data.get('file_metadata', {}).get('place', 'Unknown'),
                             "date": data.get('file_metadata', {}).get('date', 'Unknown'),
                             "time": data.get('file_metadata', {}).get('time', 'Unknown'),
-                            "summary": data.get('summary', 'No summary')[:500]
+                            "summary": data.get('summary', 'No summary')[:800]
                         })
                 except Exception as e:
                     print(f"   [Error reading {f}]: {e}")
